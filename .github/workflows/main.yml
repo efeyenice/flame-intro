@@ -10,13 +10,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    steps:
+    defaults:
+      run: 
+        working-directory: flame_intro
     
+
+    steps:
     
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - run: cd flame_intro
 
     # 1 Install & cache the SDK (+ pub cache)
     - name: Setup Flutter SDK
