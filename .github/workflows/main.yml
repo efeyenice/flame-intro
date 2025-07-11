@@ -11,6 +11,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
     defaults:
       run: 
         working-directory: flame_intro
@@ -42,15 +47,19 @@ jobs:
     # 5 Compile a web build – quickest to verify
     - run: flutter build web --release
 
-    # 6 Keep the artefact so you can download it
+    # 6 Keep the artifact so you can download it
     - name: Upload web build
       uses: actions/upload-artifact@v4
       with:
         name: web-build
         path: flame_intro/build/web
     # 7 see it on github pages
-    - name: Deploy to GitHub Pages
-      uses: peaceiris/actions-gh-pages@v4
+    - name: Upload pages artifact
+      uses: actions/upload-pages-artifact@v2
       with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: flame_intro/build/web
+        path: flame_intro/build/web      # <- folder to publish
+
+    # publish that artifact
+    - name: Deploy to GitHub Pages
+      uses: actions/deploy-pages@v2
+      id: deploy                        # (gives nice summary in run log)
