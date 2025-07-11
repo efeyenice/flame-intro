@@ -44,15 +44,9 @@ jobs:
     #- run: flutter test --coverage
 
     # 5 Compile a web build – quickest to verify
-    - run: flutter build web --release
-
-    # 6 Keep the artifact so you can download it
-    - name: Upload web build
-      uses: actions/upload-artifact@v4
-      with:
-        name: web-build
-        path: flame_intro/build/web
-    # 7 see it on github pages
+    - run: flutter build web --release --base-href /flame-intro/
+    
+    # 6 see it on github pages
     - name: Upload pages artifact
       uses: actions/upload-pages-artifact@v3
       with:
