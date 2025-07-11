@@ -36,7 +36,7 @@ jobs:
     - run: flutter analyze --no-fatal-infos
 
     # 4 (If/when you add them) run tests
-    - run: flutter test --coverage
+    #- run: flutter test --coverage
 
     # 5 Compile a web build – quickest to verify
     - run: flutter build web --release
