@@ -28,12 +28,11 @@ jobs:
       
 
     # 1 Install & cache the SDK (+ pub cache)
-    - name: Setup Flutter SDK
-      uses: flutter-actions/setup-flutter@v4.0
+    - name: Set up Flutter
+      uses: subosito/flutter-action@v2          # or pin a commit SHA
       with:
-        channel: stable          # or beta/dev
-        cache:   true            # SDK + pub deps cached
-        version: latest
+        channel: stable                        # dev / beta / master also supported
+        cache: true   
 
     # 2 Resolve dependencies
     - run: flutter pub get
