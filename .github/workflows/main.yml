@@ -1,0 +1,48 @@
+name: Flutter CI
+
+on:
+  push:            # run on every commit
+    branches: [ main ]
+  pull_request:    # and on PRs
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # 1 Install & cache the SDK (+ pub cache)
+    - name: Setup Flutter SDK
+      uses: flutter-actions/setup-flutter@v4.0
+      with:
+        channel: stable          # or beta/dev
+        cache:   true            # SDK + pub deps cached
+        version: latest
+
+    # 2 Resolve dependencies
+    - run: flutter pub get
+
+    # 3 Static analysis (fails on warnings)
+    - run: flutter analyze --no-fatal-infos
+
+    # 4 (If/when you add them) run tests
+    - run: flutter test --coverage
+
+    # 5 Compile a web build – quickest to verify
+    - run: flutter build web --release
+
+    # 6 Keep the artefact so you can download it
+    - name: Upload web build
+      uses: actions/upload-artifact@v4
+      with:
+        name: web-build
+        path: build/web
+    # 7 see it on github pages
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v4
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./build/web
