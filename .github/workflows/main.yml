@@ -46,10 +46,10 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: web-build
-        path: build/web
+        path: flame_intro/build/web
     # 7 see it on github pages
     - name: Deploy to GitHub Pages
       uses: peaceiris/actions-gh-pages@v4
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./build/web
+        publish_dir: flame_intro/build/web
