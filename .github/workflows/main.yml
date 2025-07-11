@@ -55,11 +55,11 @@ jobs:
         path: flame_intro/build/web
     # 7 see it on github pages
     - name: Upload pages artifact
-      uses: actions/upload-pages-artifact@v2
+      uses: actions/upload-pages-artifact@v3
       with:
         path: flame_intro/build/web      # <- folder to publish
 
     # publish that artifact
     - name: Deploy to GitHub Pages
-      uses: actions/deploy-pages@v2
+      uses: actions/deploy-pages@v4
       id: deploy                        # (gives nice summary in run log)
