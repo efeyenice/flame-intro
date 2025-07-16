@@ -21,8 +21,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          path: flame_intro
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -54,7 +52,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - id: meta
         run: echo "sha=${{ github.sha }}" >> $GITHUB_OUTPUT
-      - name: Build & push
+      - name: Build &amp; push
         run: |
           docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro:${{ steps.meta.outputs.sha }} .
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro:${{ steps.meta.outputs.sha }}
