@@ -41,6 +41,9 @@ jobs:
   build_image:
     needs: test
     runs-on: ubuntu-latest
+    defaults:
+      run: 
+        working-directory: flame_intro
     steps:
       - uses: actions/checkout@v4
       - uses: docker/login-action@v3
