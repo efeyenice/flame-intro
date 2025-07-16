@@ -57,7 +57,7 @@ jobs:
           docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro:${{ steps.meta.outputs.sha }} .
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro:${{ steps.meta.outputs.sha }}
       - name: Save tag
-        run: echo "${{ steps.meta.outputs.sha }}" > flame_intro/tag.txt
+        run: echo "${{ steps.meta.outputs.sha }}" > tag.txt
       - uses: actions/upload-artifact@v4
         with:
           name: image-tag
