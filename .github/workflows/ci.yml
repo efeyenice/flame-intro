@@ -48,7 +48,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - id: meta
-        run: echo "sha=${GITHUB_SHA}" &gt;&gt; $GITHUB_OUTPUT
+        run: echo "sha=${{ github.sha }}" >> $GITHUB_OUTPUT
       - name: Build &amp; push
         run: |
           docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro:${{ steps.meta.outputs.sha }} .
