@@ -29,7 +29,7 @@ jobs:
         run: echo "TAG=$(cat flame_intro/tag.txt)" >> $GITHUB_OUTPUT
 
       - name: Deploy container
-        uses: azure/webapps-container-deploy@v2
+        uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
           images:   ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro:${{ steps.readtag.outputs.TAG }}
