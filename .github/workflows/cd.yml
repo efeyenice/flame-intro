@@ -1,0 +1,35 @@
+name: CD – deploy to Azure
+
+on:
+  workflow_run:
+    workflows: ["Flutter CI"]
+    types: [completed]
+
+permissions:        # add this block
+  contents: read
+  actions:  read
+  id-token: write
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Download tag from CI
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          name: image-tag         # must match the name in CI
+
+      - id: readtag
+        run: echo "TAG=$(cat flame_intro/tag.txt)" >> $GITHUB_OUTPUT
+
+      - name: Deploy container
+        uses: azure/webapps-container-deploy@v2
+        with:
+          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+          images:   ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro:${{ steps.readtag.outputs.TAG }}
