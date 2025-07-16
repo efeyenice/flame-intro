@@ -1,10 +1,10 @@
 name: Flutter CI
 
 on:
-  push:            # run on every commit
-    branches: [ main ]
-  pull_request:    # and on PRs
-    branches: [ main ]
+  #push:            # run on every commit
+    #branches: [ main ]
+ # pull_request:    # and on PRs
+   # branches: [ main ]
   workflow_dispatch:
 
 jobs:
