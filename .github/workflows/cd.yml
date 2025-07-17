@@ -24,6 +24,7 @@ jobs:
         with:
           run-id: ${{ github.event.workflow_run.id }}
           name: image-tag         # must match the name in CI
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - id: readtag
         run: echo "TAG=$(cat flame_intro/tag.txt)" >> $GITHUB_OUTPUT
