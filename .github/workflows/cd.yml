@@ -24,10 +24,11 @@ jobs:
         with:
           run-id: ${{ github.event.workflow_run.id }}
           name: image-tag         # must match the name in CI
+          path:    ./image-tag
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - id: readtag
-        run: echo "TAG=$(cat flame_intro/tag.txt)" >> $GITHUB_OUTPUT
+        run: echo "TAG=$(cat image-tag/tag.txt)" >> $GITHUB_OUTPUT
 
       - name: Deploy container
         uses: azure/webapps-deploy@v3
