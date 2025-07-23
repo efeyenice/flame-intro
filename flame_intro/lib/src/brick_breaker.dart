@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 
 import 'components/components.dart';
 import 'config.dart';
+import 'services/leaderboard_service.dart';
 
 enum PlayState { welcome, playing, gameOver, won }
 
@@ -23,9 +24,17 @@ class BrickBreaker extends FlameGame
       );
 
   final ValueNotifier<int> score = ValueNotifier(0);            // Add this line
+  final ValueNotifier<int?> submittedRank = ValueNotifier(null);
   final rand = math.Random();
   double get width => size.x;
   double get height => size.y;
+  
+  String? playerName;
+  int? playerId;
+  final leaderboardService = LeaderboardService();
+  bool _scoreSubmitted = false;
+  Function()? onGameStart;
+  Function(bool success, int? rank)? onScoreSubmitted;
 
   late PlayState _playState;
   PlayState get playState => _playState;
@@ -36,10 +45,38 @@ class BrickBreaker extends FlameGame
       case PlayState.gameOver:
       case PlayState.won:
         overlays.add(playState.name);
+        // Submit score when game ends
+        if ((playState == PlayState.gameOver || playState == PlayState.won) && 
+            !_scoreSubmitted && 
+            playerId != null && 
+            score.value > 0) {
+          _submitScore();
+        }
       case PlayState.playing:
         overlays.remove(PlayState.welcome.name);
         overlays.remove(PlayState.gameOver.name);
         overlays.remove(PlayState.won.name);
+    }
+  }
+
+  Future<void> _submitScore() async {
+    if (_scoreSubmitted || playerId == null) {
+      onScoreSubmitted?.call(false, null);
+      return;
+    }
+    
+    _scoreSubmitted = true;
+    debugPrint('Submitting score: ${score.value} for player $playerId');
+    
+    final result = await leaderboardService.submitScore(playerId!, score.value);
+    
+    if (result != null) {
+      debugPrint('Score submitted successfully! Rank: ${result.rank}');
+      submittedRank.value = result.rank;
+      onScoreSubmitted?.call(true, result.rank);
+    } else {
+      debugPrint('Failed to submit score');
+      onScoreSubmitted?.call(false, null);
     }
   }
 
@@ -63,6 +100,11 @@ class BrickBreaker extends FlameGame
 
     playState = PlayState.playing;
     score.value = 0;                                            // Add this line
+    _scoreSubmitted = false;  // Reset score submission flag
+    submittedRank.value = null;  // Reset rank
+    
+    // Notify UI that game has started
+    onGameStart?.call();
 
     world.add(
       Ball(

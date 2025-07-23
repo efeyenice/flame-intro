@@ -33,12 +33,12 @@ Convert the existing Flutter Flame brick breaker game into a multicontainer appl
 - [x] Implement input validation and error handling
 
 ### Phase 2: Frontend Modifications
-- [ ] Add player name input screen before game starts
-- [ ] Create LeaderboardService class for API communication
-- [ ] Implement leaderboard display screen with top 5 scores
-- [ ] Integrate score submission on game over
-- [ ] Add navigation between game states and leaderboard
-- [ ] Handle offline/error states gracefully
+- [x] Add player name input screen before game starts
+- [x] Create LeaderboardService class for API communication
+- [x] Implement leaderboard display screen with top 5 scores
+- [x] Integrate score submission on game over
+- [x] Add navigation between game states and leaderboard
+- [x] Handle offline/error states gracefully
 
 ### Phase 3: Containerization
 - [ ] Create backend Dockerfile
