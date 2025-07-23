@@ -80,6 +80,7 @@ jobs:
             --name flame-intro-backend \
             --image ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro-backend:${{ steps.readtag.outputs.TAG }} \
             --location francecentral \
+            --os-type Linux \
             --environment-variables \
               DATABASE_URL=postgres://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@${{ secrets.AZURE_DB_HOST }}:5432/${{ secrets.POSTGRES_DB }} \
               PORT=8000 \
