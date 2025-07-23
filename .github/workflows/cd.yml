@@ -48,22 +48,29 @@ jobs:
           # Apply database schema
           PGPASSWORD=${{ secrets.POSTGRES_PASSWORD }} psql -h ${{ secrets.AZURE_DB_HOST }} -p 5432 -U ${{ secrets.POSTGRES_USER }} -d ${{ secrets.POSTGRES_DB }} -f backend/database/schema.sql || echo "Schema already exists or migration completed"
 
-      # Deploy using docker-compose to Azure Container Instances
-      - name: Deploy multicontainer setup
+      # Deploy containers to allowed region (France Central)
+      - name: Deploy backend container
         run: |
-          # Set environment variables for production
-          export TAG=${{ steps.readtag.outputs.TAG }}
-          export POSTGRES_DB=${{ secrets.POSTGRES_DB }}
-          export POSTGRES_USER=${{ secrets.POSTGRES_USER }}
-          export POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-          export CORS_ORIGIN=${{ secrets.CORS_ORIGIN }}
-          export API_URL=${{ secrets.API_URL }}
-          
-          # Deploy using Azure Container Instances
           az container create \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --file docker-compose.prod.yml \
-            --name flame-intro-app
+            --name flame-intro-backend \
+            --image ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro-backend:${{ steps.readtag.outputs.TAG }} \
+            --location francecentral \
+            --environment-variables \
+              DATABASE_URL=postgres://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@${{ secrets.AZURE_DB_HOST }}:5432/${{ secrets.POSTGRES_DB }} \
+              PORT=8000 \
+              CORS_ORIGIN=${{ secrets.CORS_ORIGIN }} \
+            --ports 8000 \
+            --memory 1 \
+            --cpu 0.5 \
+            --restart-policy Always
+
+      # Deploy frontend to existing web app
+      - name: Deploy frontend to web app
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro:${{ steps.readtag.outputs.TAG }}
 
       # Health check
       - name: Health check
