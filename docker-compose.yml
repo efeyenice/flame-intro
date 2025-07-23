@@ -1,0 +1,36 @@
+version: '3.8'
+services:
+  db:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_DB: brickbreaker
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    ports:
+      - '5432:5432'
+    volumes:
+      - db_data:/var/lib/postgresql/data
+  backend:
+    build: ./backend
+    restart: always
+    environment:
+      DATABASE_URL: postgres://user:pass@db:5432/brickbreaker
+      PORT: 8000
+      CORS_ORIGIN: '*'
+    ports:
+      - '8000:8000'
+    depends_on:
+      - db
+  game:
+    build:
+      context: ./flame_intro
+      args:
+        API_URL: http://localhost:8000
+    restart: always
+    ports:
+      - '3000:80'
+    depends_on:
+      - backend
+volumes:
+  db_data: 

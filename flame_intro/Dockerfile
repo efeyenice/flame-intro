@@ -15,6 +15,7 @@ RUN flutter doctor
 
 # Set working directory
 WORKDIR /app
+ARG API_URL=http://localhost:8000
 
 # Copy pubspec files first for caching dependencies
 COPY pubspec.* ./
@@ -29,7 +30,7 @@ COPY . .
 RUN flutter pub get --offline
 
 # Build the web app in release mode
-RUN flutter build web --release
+RUN flutter build web --release --dart-define API_URL=$API_URL
 
 # Runtime stage
 FROM nginx:stable-alpine
