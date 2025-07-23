@@ -32,6 +32,30 @@ jobs:
       - id: readtag
         run: echo "TAG=$(cat image-tag/tag.txt)" >> $GITHUB_OUTPUT
 
+      # Verify Azure providers are registered
+      - name: Verify Azure providers
+        run: |
+          echo "Checking Azure provider registration status..."
+          
+          # Check Container Instance provider
+          CI_STATUS=$(az provider show -n Microsoft.ContainerInstance --query registrationState --output tsv)
+          echo "Container Instance provider: $CI_STATUS"
+          
+          # Check PostgreSQL provider  
+          PG_STATUS=$(az provider show -n Microsoft.DBforPostgreSQL --query registrationState --output tsv)
+          echo "PostgreSQL provider: $PG_STATUS"
+          
+          # Register if needed (but don't wait)
+          if [ "$CI_STATUS" != "Registered" ]; then
+            echo "Registering Container Instance provider..."
+            az provider register --namespace Microsoft.ContainerInstance
+          fi
+          
+          if [ "$PG_STATUS" != "Registered" ]; then
+            echo "Registering PostgreSQL provider..."
+            az provider register --namespace Microsoft.DBforPostgreSQL
+          fi
+
       # Run database migrations
       - name: Run database migrations
         run: |
