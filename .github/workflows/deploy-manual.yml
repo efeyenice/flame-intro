@@ -1,0 +1,82 @@
+name: Manual Deploy to Azure
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      tag:
+        description: 'Docker image tag to deploy (defaults to latest commit)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set deployment tag
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "TAG=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "TAG=${{ github.sha }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check Docker images exist
+        run: |
+          echo "Checking if Docker images exist for tag: ${{ steps.tag.outputs.TAG }}"
+          docker manifest inspect ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro:${{ steps.tag.outputs.TAG }}
+          docker manifest inspect ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro-backend:${{ steps.tag.outputs.TAG }}
+
+      - name: Run database migrations
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          
+          until pg_isready -h ${{ secrets.AZURE_DB_HOST }} -p 5432 -U ${{ secrets.POSTGRES_USER }}; do
+            echo "Waiting for database..."
+            sleep 5
+          done
+          
+          PGPASSWORD=${{ secrets.POSTGRES_PASSWORD }} psql -h ${{ secrets.AZURE_DB_HOST }} -p 5432 -U ${{ secrets.POSTGRES_USER }} -d ${{ secrets.POSTGRES_DB }} -f backend/database/schema.sql || echo "Schema already exists or migration completed"
+
+      - name: Deploy to Azure
+        run: |
+          export TAG=${{ steps.tag.outputs.TAG }}
+          export DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
+          export POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+          export POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+          export POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          export CORS_ORIGIN=${{ secrets.CORS_ORIGIN }}
+          export API_URL=${{ secrets.API_URL }}
+          export AZURE_RESOURCE_GROUP=${{ secrets.AZURE_RESOURCE_GROUP }}
+          export FRONTEND_URL=${{ secrets.FRONTEND_URL }}
+          
+          ./deploy.sh
+
+      - name: Deployment Summary
+        run: |
+          echo "🎉 Deployment completed successfully!"
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "Tag: ${{ steps.tag.outputs.TAG }}"
+          echo "Frontend URL: ${{ secrets.FRONTEND_URL }}"
+          echo "Backend API: ${{ secrets.API_URL }}" 

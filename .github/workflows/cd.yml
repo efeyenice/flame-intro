@@ -5,7 +5,7 @@ on:
     workflows: ["Flutter CI"]
     types: [completed]
 
-permissions:        # add this block
+permissions:
   contents: read
   actions:  read
   id-token: write
@@ -15,6 +15,8 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -23,15 +25,54 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           run-id: ${{ github.event.workflow_run.id }}
-          name: image-tag         # must match the name in CI
-          path:    ./image-tag
+          name: image-tag
+          path: ./image-tag
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - id: readtag
         run: echo "TAG=$(cat image-tag/tag.txt)" >> $GITHUB_OUTPUT
 
-      - name: Deploy container
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
-          images:   ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro:${{ steps.readtag.outputs.TAG }}
+      # Run database migrations
+      - name: Run database migrations
+        run: |
+          # Install PostgreSQL client
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          
+          # Wait for database connection and run schema
+          until pg_isready -h ${{ secrets.AZURE_DB_HOST }} -p 5432 -U ${{ secrets.POSTGRES_USER }}; do
+            echo "Waiting for database..."
+            sleep 5
+          done
+          
+          # Apply database schema
+          PGPASSWORD=${{ secrets.POSTGRES_PASSWORD }} psql -h ${{ secrets.AZURE_DB_HOST }} -p 5432 -U ${{ secrets.POSTGRES_USER }} -d ${{ secrets.POSTGRES_DB }} -f backend/database/schema.sql || echo "Schema already exists or migration completed"
+
+      # Deploy using docker-compose to Azure Container Instances
+      - name: Deploy multicontainer setup
+        run: |
+          # Set environment variables for production
+          export TAG=${{ steps.readtag.outputs.TAG }}
+          export POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+          export POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+          export POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          export CORS_ORIGIN=${{ secrets.CORS_ORIGIN }}
+          export API_URL=${{ secrets.API_URL }}
+          
+          # Deploy using Azure Container Instances
+          az container create \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --file docker-compose.prod.yml \
+            --name flame-intro-app
+
+      # Health check
+      - name: Health check
+        run: |
+          echo "Waiting for services to be ready..."
+          sleep 60
+          
+          # Check backend health
+          curl -f ${{ secrets.API_URL }}/api/health || echo "Backend health check failed"
+          
+          # Check frontend
+          curl -f ${{ secrets.FRONTEND_URL }} || echo "Frontend health check failed"

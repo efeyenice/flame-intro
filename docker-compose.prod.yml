@@ -10,7 +10,7 @@ services:
     volumes:
       - db_data:/var/lib/postgresql/data
   backend:
-    build: ./backend
+    image: ${DOCKERHUB_USERNAME}/flame-intro-backend:${TAG}
     restart: always
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
@@ -19,10 +19,7 @@ services:
     depends_on:
       - db
   game:
-    build:
-      context: ./flame_intro
-      args:
-        API_URL: ${API_URL}
+    image: ${DOCKERHUB_USERNAME}/flame-intro:${TAG}
     restart: always
     ports:
       - '80:80'
