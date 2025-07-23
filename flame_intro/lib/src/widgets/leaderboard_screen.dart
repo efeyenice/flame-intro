@@ -18,7 +18,7 @@ class LeaderboardScreen extends StatefulWidget {
 }
 
 class _LeaderboardScreenState extends State<LeaderboardScreen> {
-  late Future<List<LeaderboardEntry>> _leaderboardFuture;
+  Future<List<LeaderboardEntry>>? _leaderboardFuture;
   List<LeaderboardEntry> _cachedLeaderboard = [];
   bool _isOffline = false;
 
@@ -30,13 +30,19 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
   Future<void> _loadLeaderboard() async {
     final isOnline = await widget.leaderboardService.checkHealth();
-    _isOffline = !isOnline;
+    setState(() {
+      _isOffline = !isOnline;
+    });
     
-    _leaderboardFuture = widget.leaderboardService.getLeaderboard().then((data) {
+    final future = widget.leaderboardService.getLeaderboard().then((data) {
       if (data.isNotEmpty) {
         _cachedLeaderboard = data;
       }
       return data;
+    });
+    
+    setState(() {
+      _leaderboardFuture = future;
     });
   }
 
@@ -199,6 +205,13 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                         child: FutureBuilder<List<LeaderboardEntry>>(
                           future: _leaderboardFuture,
                           builder: (context, snapshot) {
+                            if (_leaderboardFuture == null) {
+                              return const Center(
+                                child: CircularProgressIndicator(
+                                  color: Color(0xff184e77),
+                                ),
+                              );
+                            }
                             if (snapshot.connectionState == ConnectionState.waiting) {
                               return const Center(
                                 child: CircularProgressIndicator(

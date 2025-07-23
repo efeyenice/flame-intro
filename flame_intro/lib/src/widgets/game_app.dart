@@ -83,9 +83,11 @@ class _GameAppState extends State<GameApp> {
   }
 
   void _toggleLeaderboard() {
+    debugPrint('Toggling leaderboard. Current state: $showLeaderboard');
     setState(() {
       showLeaderboard = !showLeaderboard;
     });
+    debugPrint('New leaderboard state: $showLeaderboard');
   }
 
   @override
