@@ -81,6 +81,9 @@ jobs:
             --image ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro-backend:${{ steps.readtag.outputs.TAG }} \
             --location francecentral \
             --os-type Linux \
+            --registry-login-server index.docker.io \
+            --registry-username ${{ secrets.DOCKERHUB_USERNAME }} \
+            --registry-password ${{ secrets.DOCKERHUB_TOKEN }} \
             --environment-variables \
               DATABASE_URL=postgres://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@${{ secrets.AZURE_DB_HOST }}:5432/${{ secrets.POSTGRES_DB }} \
               PORT=8000 \
