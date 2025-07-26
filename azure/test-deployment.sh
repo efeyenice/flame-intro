@@ -28,82 +28,82 @@ echo "🔍 Checking if resource group exists..."
 if ! az group show --name "$RESOURCE_GROUP" >/dev/null 2>&1; then
     echo "⚠️  Resource group '$RESOURCE_GROUP' does not exist."
     echo "💡 To create it, run: az group create --name $RESOURCE_GROUP --location $LOCATION"
-    echo "📝 Continuing with syntax validation only..."
-    SKIP_WHAT_IF=true
+    SKIP_RESOURCE_CHECKS=true
 else
     echo "✅ Resource group exists"
-    SKIP_WHAT_IF=false
+    SKIP_RESOURCE_CHECKS=false
 fi
 
-# Test 1: Validate Bicep template syntax
-echo "🔍 Testing Bicep template syntax..."
-if az bicep build --file azure/container-app-environment.bicep --stdout >/dev/null 2>&1; then
-    echo "✅ Bicep template syntax is valid"
+# Test 1: Check Container Apps environment (the main test)
+echo "🔍 Testing Container Apps environment deployment approach..."
+if az containerapp env show -g "$RESOURCE_GROUP" -n "$ENVIRONMENT_NAME" >/dev/null 2>&1; then
+    echo "✅ Container Apps environment already exists – deployment would skip infrastructure creation"
+    ENVIRONMENT_EXISTS=true
 else
-    echo "❌ Bicep template has syntax errors"
-    echo "🔧 Running syntax check with full output:"
-    az bicep build --file azure/container-app-environment.bicep --stdout
-    exit 1
+    echo "📦 Container Apps environment does not exist – deployment would create new infrastructure"
+    ENVIRONMENT_EXISTS=false
 fi
 
-# Test 2: What-if deployment (dry run) - only if resource group exists
-if [ "$SKIP_WHAT_IF" = "false" ]; then
-    echo "🎯 Running what-if deployment analysis..."
-    az deployment group what-if \
+# Test 2: Check supporting resources (only if resource group exists)
+if [ "$SKIP_RESOURCE_CHECKS" = "false" ]; then
+    echo "🔍 Checking supporting infrastructure..."
+
+    WORKSPACE_EXISTS=$(az monitor log-analytics workspace show \
         --resource-group "$RESOURCE_GROUP" \
-        --template-file azure/container-app-environment.bicep \
-        --parameters \
-            location="$LOCATION" \
-            environmentName="$ENVIRONMENT_NAME" \
-            forceNew=false \
-        --result-format FullResourcePayloads
-
-    echo "✅ What-if analysis completed"
-
-    # Test 3: Check for existing resources
-    echo "🔍 Checking for existing resources..."
-
-    ENVIRONMENT_EXISTS=$(az containerapp env list \
-        --resource-group "$RESOURCE_GROUP" \
-        --query "[?name=='$ENVIRONMENT_NAME'].name" \
+        --workspace-name flame-intro-v2-logs \
+        --query name \
         --output tsv 2>/dev/null || echo "")
 
-    WORKSPACE_EXISTS=$(az monitor log-analytics workspace list \
+    VNET_EXISTS=$(az network vnet show \
         --resource-group "$RESOURCE_GROUP" \
-        --query "[?name=='flame-intro-v2-logs'].name" \
+        --name flame-intro-v2-vnet \
+        --query name \
         --output tsv 2>/dev/null || echo "")
 
-    VNET_EXISTS=$(az network vnet list \
-        --resource-group "$RESOURCE_GROUP" \
-        --query "[?name=='flame-intro-v2-vnet'].name" \
-        --output tsv 2>/dev/null || echo "")
-
-    echo "📊 Existing resources status:"
-    echo "  Environment: ${ENVIRONMENT_EXISTS:-'Not found'}"
-    echo "  Log Analytics: ${WORKSPACE_EXISTS:-'Not found'}"
+    echo "📊 Supporting infrastructure status:"
+    echo "  Log Analytics workspace: ${WORKSPACE_EXISTS:-'Not found'}"
     echo "  Virtual Network: ${VNET_EXISTS:-'Not found'}"
 
-    # Determine deployment strategy
-    if [ -n "$WORKSPACE_EXISTS" ] && [ -n "$VNET_EXISTS" ]; then
-        FORCE_NEW="false"
-        echo "✅ Will reference existing infrastructure (forceNew=false)"
-    else
-        FORCE_NEW="true"
-        echo "📦 Will create new infrastructure (forceNew=true)"
+    if [ "$ENVIRONMENT_EXISTS" = "false" ]; then
+        if [ -n "$WORKSPACE_EXISTS" ] && [ -n "$VNET_EXISTS" ]; then
+            echo "✅ Supporting infrastructure exists – deployment would reuse existing resources"
+        else
+            echo "📦 Missing infrastructure – deployment would create new Log Analytics workspace and VNet"
+        fi
     fi
 else
-    FORCE_NEW="true"
-    echo "⏭️  Skipping what-if analysis and resource checks (no resource group)"
+    echo "⏭️  Skipping supporting infrastructure checks (no resource group)"
+fi
+
+# Test 3: Validate that we can get workspace details (if they exist)
+if [ "$SKIP_RESOURCE_CHECKS" = "false" ] && [ -n "${WORKSPACE_EXISTS:-}" ]; then
+    echo "🔍 Testing workspace credentials retrieval..."
+    if az monitor log-analytics workspace get-shared-keys \
+        --resource-group "$RESOURCE_GROUP" \
+        --workspace-name flame-intro-v2-logs \
+        --query primarySharedKey \
+        --output tsv >/dev/null 2>&1; then
+        echo "✅ Can retrieve workspace credentials"
+    else
+        echo "⚠️  Cannot retrieve workspace credentials – may need permissions"
+    fi
 fi
 
 echo ""
 echo "🎯 Deployment test completed successfully!"
-echo "💡 To run actual deployment:"
-echo "   # First ensure resource group exists:"
-echo "   az group create --name $RESOURCE_GROUP --location $LOCATION"
 echo ""
-echo "   # Then deploy the environment:"
-echo "   az deployment group create \\"
-echo "     --resource-group $RESOURCE_GROUP \\"
-echo "     --template-file azure/container-app-environment.bicep \\"
-echo "     --parameters location=$LOCATION environmentName=$ENVIRONMENT_NAME forceNew=$FORCE_NEW" 
+echo "💡 Deployment strategy summary:"
+if [ "$ENVIRONMENT_EXISTS" = "true" ]; then
+    echo "   ✅ Environment exists → Skip infrastructure creation"
+else
+    echo "   📦 Environment missing → Create full infrastructure stack"
+fi
+echo ""
+echo "💡 To run actual deployment:"
+echo "   # The CI/CD pipeline will automatically:"
+echo "   1. Check if Container Apps environment exists"
+echo "   2. Create infrastructure only if needed (Log Analytics + VNet + Environment)"
+echo "   3. Deploy container apps to the environment"
+echo ""
+echo "   # For manual deployment, ensure resource group exists first:"
+echo "   az group create --name $RESOURCE_GROUP --location $LOCATION" 

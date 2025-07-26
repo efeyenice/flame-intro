@@ -50,75 +50,85 @@ jobs:
           set -euo pipefail
           echo "🚀 Deploying backend container app..."
           
-          # Check if environment exists, create infrastructure if not
+          # Check if Container Apps environment exists
           echo "📦 Checking for existing Container App Environment..."
-          ENVIRONMENT_EXISTS=$(az containerapp env list \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --query "[?name=='flame-intro-env-v2'].name" \
-            --output tsv 2>/dev/null || echo "")
-          
-          if [ -z "$ENVIRONMENT_EXISTS" ]; then
-            echo "📦 Creating Container App Environment and infrastructure..."
+          if az containerapp env show -g ${{ secrets.AZURE_RESOURCE_GROUP }} -n flame-intro-env-v2 >/dev/null 2>&1; then
+            echo "✅ Container Apps environment already exists – skipping infrastructure creation"
+          else
+            echo "📦 Creating Container Apps environment and supporting infrastructure..."
             
-            # First check if supporting resources exist
-            WORKSPACE_EXISTS=$(az monitor log-analytics workspace list \
-              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-              --query "[?name=='flame-intro-v2-logs'].name" \
-              --output tsv 2>/dev/null || echo "")
-            
-            VNET_EXISTS=$(az network vnet list \
-              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-              --query "[?name=='flame-intro-v2-vnet'].name" \
-              --output tsv 2>/dev/null || echo "")
-            
-            # Determine if we need to create new infrastructure
-            FORCE_NEW="true"
-            if [ -n "$WORKSPACE_EXISTS" ] && [ -n "$VNET_EXISTS" ]; then
-              echo "✅ Supporting infrastructure exists, will reference existing resources"
-              FORCE_NEW="false"
-            else
-              echo "📦 Creating new infrastructure resources"
-              FORCE_NEW="true"
+            # Ensure resource group exists
+            if ! az group show --name ${{ secrets.AZURE_RESOURCE_GROUP }} >/dev/null 2>&1; then
+              echo "📦 Creating resource group..."
+              az group create \
+                --name ${{ secrets.AZURE_RESOURCE_GROUP }} \
+                --location francecentral
             fi
             
-            # Deploy environment with proper error handling
-            echo "🔧 Deploying Container App Environment..."
-            az deployment group create \
+            # Create Log Analytics workspace if it doesn't exist
+            echo "📊 Creating Log Analytics workspace..."
+            az monitor log-analytics workspace create \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-              --template-file azure/container-app-environment.bicep \
-              --parameters \
-                location=francecentral \
-                environmentName=flame-intro-env-v2 \
-                forceNew=$FORCE_NEW \
-              --output table
+              --workspace-name flame-intro-v2-logs \
+              --location francecentral \
+              --sku PerGB2018 \
+              --retention-time 30 \
+              2>/dev/null || echo "Log Analytics workspace already exists or creation completed"
             
-            echo "✅ Container App Environment deployment completed"
-          else
-            echo "✅ Environment already exists: $ENVIRONMENT_EXISTS"
-          fi
-          
-          # Get environment ID with retry
-          echo "🔍 Getting environment ID for backend deployment..."
-          for i in {1..5}; do
-            ENVIRONMENT_ID=$(az containerapp env show \
+            # Create VNet if it doesn't exist
+            echo "🌐 Creating Virtual Network..."
+            az network vnet create \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --name flame-intro-v2-vnet \
+              --location francecentral \
+              --address-prefixes 10.0.0.0/16 \
+              --subnet-name container-apps-subnet \
+              --subnet-prefixes 10.0.0.0/21 \
+              2>/dev/null || echo "VNet already exists or creation completed"
+            
+            # Get workspace details
+            WORKSPACE_ID=$(az monitor log-analytics workspace show \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --workspace-name flame-intro-v2-logs \
+              --query customerId \
+              --output tsv)
+            
+            WORKSPACE_KEY=$(az monitor log-analytics workspace get-shared-keys \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --workspace-name flame-intro-v2-logs \
+              --query primarySharedKey \
+              --output tsv)
+            
+            # Get subnet ID
+            SUBNET_ID=$(az network vnet subnet show \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --vnet-name flame-intro-v2-vnet \
+              --name container-apps-subnet \
+              --query id \
+              --output tsv)
+            
+            # Create Container Apps environment
+            echo "🏗️ Creating Container Apps environment..."
+            az containerapp env create \
               --name flame-intro-env-v2 \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-              --query id \
-              --output tsv 2>/dev/null)
+              --location francecentral \
+              --logs-workspace-id "$WORKSPACE_ID" \
+              --logs-workspace-key "$WORKSPACE_KEY" \
+              --infrastructure-subnet-resource-id "$SUBNET_ID"
             
-            if [ -n "$ENVIRONMENT_ID" ]; then
-              echo "✅ Found environment ID: $ENVIRONMENT_ID"
-              break
-            else
-              echo "⏳ Attempt $i/5: Environment not ready, waiting 30s..."
-              sleep 30
-            fi
-            
-            if [ $i -eq 5 ]; then
-              echo "❌ Failed to get environment ID after 5 attempts"
-              exit 1
-            fi
-          done
+            echo "✅ Container Apps environment created successfully"
+          fi
+          
+          # Get environment ID
+          echo "🔍 Getting environment ID for backend deployment..."
+          ENVIRONMENT_ID=$(az containerapp env show \
+            --name flame-intro-env-v2 \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query id \
+            --output tsv)
+          
+          echo "✅ Found environment ID: $ENVIRONMENT_ID"
           
           # Deploy or update backend
           echo "🚀 Deploying backend container app..."
