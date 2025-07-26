@@ -45,25 +45,63 @@ jobs:
           echo "🚀 Deploying backend container app..."
           
           # Check if environment exists, create if not
+          echo "📦 Checking for existing Container App Environment..."
           ENVIRONMENT_EXISTS=$(az containerapp env list \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --query "[?name=='flame-intro-env-v2'].name" \
-            --output tsv)
+            --output tsv 2>/dev/null || echo "")
           
           if [ -z "$ENVIRONMENT_EXISTS" ]; then
             echo "📦 Creating Container App Environment..."
             az deployment group create \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
               --template-file azure/container-app-environment.bicep \
-              --parameters location=francecentral environmentName=flame-intro-env-v2
+              --parameters location=francecentral environmentName=flame-intro-env-v2 \
+              --no-wait
+            
+            echo "⏳ Waiting for environment deployment to complete..."
+            # Get the deployment name dynamically
+            DEPLOYMENT_NAME=$(az deployment group list \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --query "[?contains(name,'container-app-environment')].name | [0]" \
+              --output tsv)
+            
+            if [ -n "$DEPLOYMENT_NAME" ]; then
+              az deployment group wait \
+                --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+                --name "$DEPLOYMENT_NAME" \
+                --created \
+                --timeout 600
+            else
+              echo "⏳ Deployment name not found, waiting 60s for completion..."
+              sleep 60
+            fi
+          else
+            echo "✅ Environment already exists: $ENVIRONMENT_EXISTS"
           fi
           
-          # Get environment ID
-          ENVIRONMENT_ID=$(az containerapp env show \
-            --name flame-intro-env-v2 \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --query id \
-            --output tsv)
+          # Get environment ID with retry
+          echo "🔍 Getting environment ID for backend deployment..."
+          for i in {1..5}; do
+            ENVIRONMENT_ID=$(az containerapp env show \
+              --name flame-intro-env-v2 \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --query id \
+              --output tsv 2>/dev/null)
+            
+            if [ -n "$ENVIRONMENT_ID" ]; then
+              echo "✅ Found environment ID: $ENVIRONMENT_ID"
+              break
+            else
+              echo "⏳ Attempt $i/5: Environment not ready, waiting 30s..."
+              sleep 30
+            fi
+            
+            if [ $i -eq 5 ]; then
+              echo "❌ Failed to get environment ID after 5 attempts"
+              exit 1
+            fi
+          done
           
           # Deploy or update backend
           az containerapp create \
