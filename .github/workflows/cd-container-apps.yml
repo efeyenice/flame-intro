@@ -47,7 +47,7 @@ jobs:
           # Check if environment exists, create if not
           ENVIRONMENT_EXISTS=$(az containerapp env list \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --query "[?name=='flame-intro-env'].name" \
+            --query "[?name=='flame-intro-env-v2'].name" \
             --output tsv)
           
           if [ -z "$ENVIRONMENT_EXISTS" ]; then
@@ -55,12 +55,12 @@ jobs:
             az deployment group create \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
               --template-file azure/container-app-environment.bicep \
-              --parameters location=francecentral
+              --parameters location=francecentral environmentName=flame-intro-env-v2
           fi
           
           # Get environment ID
           ENVIRONMENT_ID=$(az containerapp env show \
-            --name flame-intro-env \
+            --name flame-intro-env-v2 \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --query id \
             --output tsv)
@@ -141,7 +141,7 @@ jobs:
           
           # Get environment ID
           ENVIRONMENT_ID=$(az containerapp env show \
-            --name flame-intro-env \
+            --name flame-intro-env-v2 \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --query id \
             --output tsv)

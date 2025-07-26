@@ -2,7 +2,7 @@
 param location string = resourceGroup().location
 
 @description('Name of the Container App Environment')
-param environmentName string = 'flame-intro-env'
+param environmentName string = 'flame-intro-env-v2'
 
 @description('Log Analytics workspace name')
 param logAnalyticsWorkspaceName string = 'flame-intro-logs'
