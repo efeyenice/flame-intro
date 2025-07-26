@@ -54,21 +54,15 @@ if [ "$SKIP_RESOURCE_CHECKS" = "false" ]; then
         --query name \
         --output tsv 2>/dev/null || echo "")
 
-    VNET_EXISTS=$(az network vnet show \
-        --resource-group "$RESOURCE_GROUP" \
-        --name flame-intro-v2-vnet \
-        --query name \
-        --output tsv 2>/dev/null || echo "")
-
     echo "📊 Supporting infrastructure status:"
     echo "  Log Analytics workspace: ${WORKSPACE_EXISTS:-'Not found'}"
-    echo "  Virtual Network: ${VNET_EXISTS:-'Not found'}"
+    echo "  Virtual Network: Skipped (using Container Apps managed networking)"
 
     if [ "$ENVIRONMENT_EXISTS" = "false" ]; then
-        if [ -n "$WORKSPACE_EXISTS" ] && [ -n "$VNET_EXISTS" ]; then
-            echo "✅ Supporting infrastructure exists – deployment would reuse existing resources"
+        if [ -n "$WORKSPACE_EXISTS" ]; then
+            echo "✅ Log Analytics workspace exists – deployment would reuse existing workspace"
         else
-            echo "📦 Missing infrastructure – deployment would create new Log Analytics workspace and VNet"
+            echo "📦 Missing workspace – deployment would create new Log Analytics workspace"
         fi
     fi
 else
@@ -96,14 +90,19 @@ echo "💡 Deployment strategy summary:"
 if [ "$ENVIRONMENT_EXISTS" = "true" ]; then
     echo "   ✅ Environment exists → Skip infrastructure creation"
 else
-    echo "   📦 Environment missing → Create full infrastructure stack"
+    echo "   📦 Environment missing → Create simplified infrastructure (Log Analytics + Container Apps Environment)"
 fi
+echo ""
+echo "💡 Network architecture:"
+echo "   🌐 Using Container Apps managed networking (no custom VNet)"
+echo "   🔓 Public ingress for game access (perfect for this project)"
+echo "   📊 Centralized logging via Log Analytics workspace"
 echo ""
 echo "💡 To run actual deployment:"
 echo "   # The CI/CD pipeline will automatically:"
 echo "   1. Check if Container Apps environment exists"
-echo "   2. Create infrastructure only if needed (Log Analytics + VNet + Environment)"
-echo "   3. Deploy container apps to the environment"
+echo "   2. Create infrastructure only if needed (Log Analytics + Environment)"
+echo "   3. Deploy container apps with public access"
 echo ""
 echo "   # For manual deployment, ensure resource group exists first:"
 echo "   az group create --name $RESOURCE_GROUP --location $LOCATION" 

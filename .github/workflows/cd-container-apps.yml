@@ -75,17 +75,6 @@ jobs:
               --retention-time 30 \
               2>/dev/null || echo "Log Analytics workspace already exists or creation completed"
             
-            # Create VNet if it doesn't exist
-            echo "🌐 Creating Virtual Network..."
-            az network vnet create \
-              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-              --name flame-intro-v2-vnet \
-              --location francecentral \
-              --address-prefixes 10.0.0.0/16 \
-              --subnet-name container-apps-subnet \
-              --subnet-prefixes 10.0.0.0/21 \
-              2>/dev/null || echo "VNet already exists or creation completed"
-            
             # Get workspace details
             WORKSPACE_ID=$(az monitor log-analytics workspace show \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
@@ -99,23 +88,14 @@ jobs:
               --query primarySharedKey \
               --output tsv)
             
-            # Get subnet ID
-            SUBNET_ID=$(az network vnet subnet show \
-              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-              --vnet-name flame-intro-v2-vnet \
-              --name container-apps-subnet \
-              --query id \
-              --output tsv)
-            
-            # Create Container Apps environment
+            # Create Container Apps environment (without custom VNet - simpler setup)
             echo "🏗️ Creating Container Apps environment..."
             az containerapp env create \
               --name flame-intro-env-v2 \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
               --location francecentral \
               --logs-workspace-id "$WORKSPACE_ID" \
-              --logs-workspace-key "$WORKSPACE_KEY" \
-              --infrastructure-subnet-resource-id "$SUBNET_ID"
+              --logs-workspace-key "$WORKSPACE_KEY"
             
             echo "✅ Container Apps environment created successfully"
           fi
