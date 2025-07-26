@@ -8,10 +8,10 @@ param environmentName string = 'flame-intro-env'
 param logAnalyticsWorkspaceName string = 'flame-intro-logs'
 
 @description('Virtual Network name')
-param vnetName string = 'flame-intro-vnet'
+param vnetName string = 'flame-intro-vnet-v2'
 
 @description('Subnet name for Container Apps')
-param subnetName string = 'container-apps-subnet'
+param subnetName string = 'container-apps-subnet-v2'
 
 // Create Log Analytics Workspace
 resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
