@@ -17,6 +17,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Set error handling
+        run: |
+          set -euo pipefail
+          echo "🔧 Error handling enabled: script will fail fast on any error"
+      
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -42,9 +47,10 @@ jobs:
       - name: Deploy Backend Container App
         id: deploy-backend
         run: |
+          set -euo pipefail
           echo "🚀 Deploying backend container app..."
           
-          # Check if environment exists, create if not
+          # Check if environment exists, create infrastructure if not
           echo "📦 Checking for existing Container App Environment..."
           ENVIRONMENT_EXISTS=$(az containerapp env list \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
@@ -52,30 +58,41 @@ jobs:
             --output tsv 2>/dev/null || echo "")
           
           if [ -z "$ENVIRONMENT_EXISTS" ]; then
-            echo "📦 Creating Container App Environment..."
+            echo "📦 Creating Container App Environment and infrastructure..."
+            
+            # First check if supporting resources exist
+            WORKSPACE_EXISTS=$(az monitor log-analytics workspace list \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --query "[?name=='flame-intro-v2-logs'].name" \
+              --output tsv 2>/dev/null || echo "")
+            
+            VNET_EXISTS=$(az network vnet list \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --query "[?name=='flame-intro-v2-vnet'].name" \
+              --output tsv 2>/dev/null || echo "")
+            
+            # Determine if we need to create new infrastructure
+            FORCE_NEW="true"
+            if [ -n "$WORKSPACE_EXISTS" ] && [ -n "$VNET_EXISTS" ]; then
+              echo "✅ Supporting infrastructure exists, will reference existing resources"
+              FORCE_NEW="false"
+            else
+              echo "📦 Creating new infrastructure resources"
+              FORCE_NEW="true"
+            fi
+            
+            # Deploy environment with proper error handling
+            echo "🔧 Deploying Container App Environment..."
             az deployment group create \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
               --template-file azure/container-app-environment.bicep \
-              --parameters location=francecentral environmentName=flame-intro-env-v2 \
-              --no-wait
+              --parameters \
+                location=francecentral \
+                environmentName=flame-intro-env-v2 \
+                forceNew=$FORCE_NEW \
+              --output table
             
-            echo "⏳ Waiting for environment deployment to complete..."
-            # Get the deployment name dynamically
-            DEPLOYMENT_NAME=$(az deployment group list \
-              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-              --query "[?contains(name,'container-app-environment')].name | [0]" \
-              --output tsv)
-            
-            if [ -n "$DEPLOYMENT_NAME" ]; then
-              az deployment group wait \
-                --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-                --name "$DEPLOYMENT_NAME" \
-                --created \
-                --timeout 600
-            else
-              echo "⏳ Deployment name not found, waiting 60s for completion..."
-              sleep 60
-            fi
+            echo "✅ Container App Environment deployment completed"
           else
             echo "✅ Environment already exists: $ENVIRONMENT_EXISTS"
           fi
@@ -104,6 +121,7 @@ jobs:
           done
           
           # Deploy or update backend
+          echo "🚀 Deploying backend container app..."
           az containerapp create \
             --name flame-intro-backend \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
@@ -124,10 +142,13 @@ jobs:
             --memory 1Gi \
             --min-replicas 1 \
             --max-replicas 3 \
+            --output table \
+            2>/dev/null \
             || az containerapp update \
               --name flame-intro-backend \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-              --image ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro-backend:${{ steps.readtag.outputs.TAG }}
+              --image ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro-backend:${{ steps.readtag.outputs.TAG }} \
+              --output table
           
           # Get backend URL
           BACKEND_FQDN=$(az containerapp show \
@@ -143,6 +164,7 @@ jobs:
       # Step 2: Run database migrations
       - name: Run database migrations
         run: |
+          set -euo pipefail
           echo "🗄️ Running database migrations..."
           until pg_isready -h ${{ secrets.AZURE_DB_HOST }} -p 5432 -U ${{ secrets.POSTGRES_USER }}; do
             echo "Waiting for database..."
@@ -160,6 +182,7 @@ jobs:
       # Step 3: Build frontend with correct API URL
       - name: Build and push frontend with backend URL
         run: |
+          set -euo pipefail
           echo "🎨 Building frontend with API URL: ${{ steps.deploy-backend.outputs.BACKEND_URL }}"
           
           # Build frontend with correct API URL
@@ -175,6 +198,7 @@ jobs:
       - name: Deploy Frontend Container App
         id: deploy-frontend
         run: |
+          set -euo pipefail
           echo "🎮 Deploying frontend container app..."
           
           # Get environment ID
@@ -185,6 +209,7 @@ jobs:
             --output tsv)
           
           # Deploy or update frontend
+          echo "🚀 Deploying frontend container app..."
           az containerapp create \
             --name flame-intro-frontend \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
@@ -199,10 +224,13 @@ jobs:
             --memory 0.5Gi \
             --min-replicas 1 \
             --max-replicas 5 \
+            --output table \
+            2>/dev/null \
             || az containerapp update \
               --name flame-intro-frontend \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-              --image ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro:${{ steps.readtag.outputs.TAG }}-with-api
+              --image ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro:${{ steps.readtag.outputs.TAG }}-with-api \
+              --output table
           
           # Get frontend URL
           FRONTEND_FQDN=$(az containerapp show \
@@ -218,6 +246,7 @@ jobs:
       # Step 5: Update backend CORS with frontend URL
       - name: Update backend CORS configuration
         run: |
+          set -euo pipefail
           echo "🔗 Updating backend CORS configuration..."
           az containerapp update \
             --name flame-intro-backend \
@@ -227,6 +256,7 @@ jobs:
       # Step 6: Health checks and validation
       - name: Comprehensive health checks
         run: |
+          set -euo pipefail
           echo "🔍 Running comprehensive health checks..."
           sleep 60
           
@@ -276,6 +306,7 @@ jobs:
       # Step 7: Output final URLs
       - name: Deployment Summary
         run: |
+          set -euo pipefail
           echo "🎉 Deployment completed successfully!"
           echo "Frontend URL: ${{ steps.deploy-frontend.outputs.FRONTEND_URL }}"
           echo "Backend URL: ${{ steps.deploy-backend.outputs.BACKEND_URL }}"

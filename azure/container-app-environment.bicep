@@ -5,16 +5,19 @@ param location string = resourceGroup().location
 param environmentName string = 'flame-intro-env-v2'
 
 @description('Log Analytics workspace name')
-param logAnalyticsWorkspaceName string = 'flame-intro-logs'
+param logAnalyticsWorkspaceName string = '${replace(environmentName, '-env', '')}-logs'
 
-@description('Virtual Network name')
-param vnetName string = 'flame-intro-vnet-v2'
+@description('Virtual Network name')  
+param vnetName string = '${replace(environmentName, '-env', '')}-vnet'
 
 @description('Subnet name for Container Apps')
-param subnetName string = 'container-apps-subnet-v2'
+param subnetName string = 'container-apps-subnet'
 
-// Create Log Analytics Workspace
-resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
+@description('Whether to create new resources or use existing ones')
+param forceNew bool = false
+
+// Create or reference existing Log Analytics Workspace
+resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2022-10-01' = if (forceNew) {
   name: logAnalyticsWorkspaceName
   location: location
   properties: {
@@ -25,8 +28,13 @@ resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2022-10
   }
 }
 
-// Create Virtual Network
-resource vnet 'Microsoft.Network/virtualNetworks@2022-07-01' = {
+// Reference existing Log Analytics Workspace if not creating new
+resource existingLogAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2022-10-01' existing = if (!forceNew) {
+  name: logAnalyticsWorkspaceName
+}
+
+// Create or reference existing Virtual Network
+resource vnet 'Microsoft.Network/virtualNetworks@2022-07-01' = if (forceNew) {
   name: vnetName
   location: location
   properties: {
@@ -54,20 +62,28 @@ resource vnet 'Microsoft.Network/virtualNetworks@2022-07-01' = {
   }
 }
 
-// Create Container App Environment
+// Reference existing Virtual Network if not creating new
+resource existingVnet 'Microsoft.Network/virtualNetworks@2022-07-01' existing = if (!forceNew) {
+  name: vnetName
+}
+
+// Create Container App Environment with conditional Log Analytics configuration
 resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2023-05-01' = {
   name: environmentName
   location: location
   properties: {
     appLogsConfiguration: {
       destination: 'log-analytics'
-      logAnalyticsConfiguration: {
+      logAnalyticsConfiguration: forceNew ? {
         customerId: logAnalyticsWorkspace.properties.customerId
         sharedKey: logAnalyticsWorkspace.listKeys().primarySharedKey
+      } : {
+        customerId: existingLogAnalyticsWorkspace.properties.customerId
+        sharedKey: existingLogAnalyticsWorkspace.listKeys().primarySharedKey
       }
     }
     vnetConfiguration: {
-      infrastructureSubnetId: vnet.properties.subnets[0].id
+      infrastructureSubnetId: forceNew ? '${vnet.id}/subnets/${subnetName}' : '${existingVnet.id}/subnets/${subnetName}'
     }
   }
 }
@@ -75,5 +91,5 @@ resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2023-05-01' 
 // Output important values
 output containerAppEnvironmentId string = containerAppEnvironment.id
 output containerAppEnvironmentName string = containerAppEnvironment.name
-output vnetId string = vnet.id
-output logAnalyticsWorkspaceId string = logAnalyticsWorkspace.id 
+output vnetId string = forceNew ? vnet.id : existingVnet.id
+output logAnalyticsWorkspaceId string = forceNew ? logAnalyticsWorkspace.id : existingLogAnalyticsWorkspace.id 
