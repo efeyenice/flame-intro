@@ -169,11 +169,15 @@ jobs:
             -f backend/database/schema.sql \
             || echo "Schema already exists or migration completed"
 
-      # Step 3: Build frontend with correct API URL
+      # Step 3: Build and push frontend with backend URL
       - name: Build and push frontend with backend URL
         run: |
           set -euo pipefail
           echo "🎨 Building frontend with API URL: ${{ steps.deploy-backend.outputs.BACKEND_URL }}"
+          
+          # Login to Docker Hub with explicit authentication
+          echo "🔐 Logging in to Docker Hub..."
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login --username "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
           
           # Build frontend with correct API URL
           docker build \
