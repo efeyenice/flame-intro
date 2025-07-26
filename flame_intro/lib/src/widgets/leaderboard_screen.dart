@@ -125,7 +125,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  _formatDate(entry.date),
+                  _formatDate(entry.createdAt),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Colors.grey[600],
                       ),

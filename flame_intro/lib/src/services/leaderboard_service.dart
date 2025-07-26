@@ -1,40 +1,25 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-
-class LeaderboardEntry {
-  final int rank;
-  final String playerName;
-  final int score;
-  final DateTime date;
-
-  LeaderboardEntry({
-    required this.rank,
-    required this.playerName,
-    required this.score,
-    required this.date,
-  });
-
-  factory LeaderboardEntry.fromJson(Map<String, dynamic> json) {
-    return LeaderboardEntry(
-      rank: json['rank'],
-      playerName: json['playerName'],
-      score: json['score'],
-      date: DateTime.parse(json['date']),
-    );
-  }
-}
+// Import dart:js for web-specific JavaScript interop
+import 'dart:js' as js;
 
 class Player {
   final int id;
   final String name;
+  final DateTime createdAt;
 
-  Player({required this.id, required this.name});
+  Player({
+    required this.id,
+    required this.name,
+    required this.createdAt,
+  });
 
   factory Player.fromJson(Map<String, dynamic> json) {
     return Player(
       id: json['id'],
       name: json['name'],
+      createdAt: DateTime.parse(json['created_at']),
     );
   }
 }
@@ -43,20 +28,46 @@ class ScoreSubmission {
   final int id;
   final int playerId;
   final int score;
-  final int rank;
+  final DateTime createdAt;
+  final int? rank;
 
   ScoreSubmission({
     required this.id,
     required this.playerId,
     required this.score,
-    required this.rank,
+    required this.createdAt,
+    this.rank,
   });
 
   factory ScoreSubmission.fromJson(Map<String, dynamic> json) {
     return ScoreSubmission(
       id: json['id'],
-      playerId: json['playerId'],
+      playerId: json['player_id'],
       score: json['score'],
+      createdAt: DateTime.parse(json['created_at']),
+      rank: json['rank'],
+    );
+  }
+}
+
+class LeaderboardEntry {
+  final String playerName;
+  final int score;
+  final DateTime createdAt;
+  final int rank;
+
+  LeaderboardEntry({
+    required this.playerName,
+    required this.score,
+    required this.createdAt,
+    required this.rank,
+  });
+
+  factory LeaderboardEntry.fromJson(Map<String, dynamic> json) {
+    return LeaderboardEntry(
+      playerName: json['player_name'],
+      score: json['score'],
+      createdAt: DateTime.parse(json['created_at']),
       rank: json['rank'],
     );
   }
@@ -69,10 +80,68 @@ class LeaderboardService {
   static const Duration _retryDelay = Duration(seconds: 1);
 
   LeaderboardService({String? apiUrl}) 
-    : baseUrl = apiUrl ?? const String.fromEnvironment(
-        'API_URL',
-        defaultValue: 'http://localhost:8000',
-      );
+    : baseUrl = apiUrl ?? _getApiUrl();
+
+  // Enhanced API URL resolution with multiple fallback strategies
+  static String _getApiUrl() {
+    // Strategy 1: Check if runtime config exists (web only)
+    if (kIsWeb) {
+      try {
+        // Check for window.API_URL set by config.js
+        final jsContext = js.context;
+        if (jsContext.hasProperty('API_URL')) {
+          final apiUrlFromJs = jsContext['API_URL'];
+          if (apiUrlFromJs != null && apiUrlFromJs.toString().isNotEmpty) {
+            debugPrint('Using window.API_URL: $apiUrlFromJs');
+            return apiUrlFromJs.toString();
+          }
+        }
+      } catch (e) {
+        debugPrint('Failed to get window.API_URL: $e');
+      }
+    }
+
+    // Strategy 2: Use compile-time defined API_URL
+    const compileTimeApiUrl = String.fromEnvironment('API_URL');
+    if (compileTimeApiUrl.isNotEmpty) {
+      debugPrint('Using compile-time API_URL: $compileTimeApiUrl');
+      return compileTimeApiUrl;
+    }
+
+    // Strategy 3: Auto-detect based on current host (production)
+    if (kIsWeb) {
+      try {
+        // Use js.context to access window.location safely
+        final location = js.context['location'];
+        if (location != null) {
+          final currentHost = location['host']?.toString();
+          if (currentHost != null && !currentHost.contains('localhost')) {
+            // In production, try to auto-detect backend URL
+            final protocol = location['protocol']?.toString();
+            final autoApiUrl = '${protocol}//flame-intro-backend.${_extractDomain(currentHost)}';
+            debugPrint('Auto-detected API URL: $autoApiUrl');
+            return autoApiUrl;
+          }
+        }
+      } catch (e) {
+        debugPrint('Failed to auto-detect API URL: $e');
+      }
+    }
+
+    // Strategy 4: Default fallback
+    const defaultUrl = 'http://localhost:8000';
+    debugPrint('Using default API_URL: $defaultUrl');
+    return defaultUrl;
+  }
+
+  static String _extractDomain(String host) {
+    // Extract domain from host (e.g., 'app.example.com' -> 'example.com')
+    final parts = host.split('.');
+    if (parts.length >= 2) {
+      return parts.skip(parts.length - 2).join('.');
+    }
+    return host;
+  }
 
   Future<Player?> createPlayer(String name) async {
     for (int attempt = 0; attempt < _maxRetries; attempt++) {
@@ -93,7 +162,7 @@ class LeaderboardService {
         if (attempt == _maxRetries - 1) return null;
         await Future.delayed(_retryDelay);
       } catch (e) {
-        debugPrint('Error creating player: $e');
+        debugPrint('Error creating player (attempt ${attempt + 1}/$_maxRetries): $e');
         if (attempt == _maxRetries - 1) return null;
         await Future.delayed(_retryDelay);
       }
@@ -123,7 +192,7 @@ class LeaderboardService {
         if (attempt == _maxRetries - 1) return null;
         await Future.delayed(_retryDelay);
       } catch (e) {
-        debugPrint('Error submitting score: $e');
+        debugPrint('Error submitting score (attempt ${attempt + 1}/$_maxRetries): $e');
         if (attempt == _maxRetries - 1) return null;
         await Future.delayed(_retryDelay);
       }
@@ -151,7 +220,7 @@ class LeaderboardService {
         if (attempt == _maxRetries - 1) return [];
         await Future.delayed(_retryDelay);
       } catch (e) {
-        debugPrint('Error getting leaderboard: $e');
+        debugPrint('Error getting leaderboard (attempt ${attempt + 1}/$_maxRetries): $e');
         if (attempt == _maxRetries - 1) return [];
         await Future.delayed(_retryDelay);
       }
@@ -161,11 +230,14 @@ class LeaderboardService {
 
   Future<bool> checkHealth() async {
     try {
+      debugPrint('Health checking API at: $baseUrl/api/health');
       final response = await http
           .get(Uri.parse('$baseUrl/api/health'))
           .timeout(const Duration(seconds: 5));
       
-      return response.statusCode == 200;
+      final isHealthy = response.statusCode == 200;
+      debugPrint('Health check result: $isHealthy (status: ${response.statusCode})');
+      return isHealthy;
     } catch (e) {
       debugPrint('Health check failed: $e');
       return false;

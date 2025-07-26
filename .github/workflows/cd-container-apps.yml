@@ -1,0 +1,248 @@
+name: CD – Deploy to Azure Container Apps
+
+on:
+  workflow_run:
+    workflows: ["Flutter CI"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Download tag from CI
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          name: image-tag
+          path: ./image-tag
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: readtag
+        run: echo "TAG=$(cat image-tag/tag.txt)" >> $GITHUB_OUTPUT
+
+      # Install required tools
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq curl postgresql-client
+
+      # Step 1: Deploy backend first to get URL
+      - name: Deploy Backend Container App
+        id: deploy-backend
+        run: |
+          echo "🚀 Deploying backend container app..."
+          
+          # Check if environment exists, create if not
+          ENVIRONMENT_EXISTS=$(az containerapp env list \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query "[?name=='flame-intro-env'].name" \
+            --output tsv)
+          
+          if [ -z "$ENVIRONMENT_EXISTS" ]; then
+            echo "📦 Creating Container App Environment..."
+            az deployment group create \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --template-file azure/container-app-environment.bicep \
+              --parameters location=francecentral
+          fi
+          
+          # Get environment ID
+          ENVIRONMENT_ID=$(az containerapp env show \
+            --name flame-intro-env \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query id \
+            --output tsv)
+          
+          # Deploy or update backend
+          az containerapp create \
+            --name flame-intro-backend \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --environment "$ENVIRONMENT_ID" \
+            --image ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro-backend:${{ steps.readtag.outputs.TAG }} \
+            --target-port 8000 \
+            --ingress external \
+            --registry-server index.docker.io \
+            --registry-username ${{ secrets.DOCKERHUB_USERNAME }} \
+            --registry-password ${{ secrets.DOCKERHUB_TOKEN }} \
+            --env-vars \
+              DATABASE_URL=secretref:database-url \
+              PORT=8000 \
+              CORS_ORIGIN=${{ secrets.CORS_ORIGIN }} \
+            --secrets \
+              database-url="postgres://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@${{ secrets.AZURE_DB_HOST }}:5432/${{ secrets.POSTGRES_DB }}" \
+            --cpu 0.5 \
+            --memory 1Gi \
+            --min-replicas 1 \
+            --max-replicas 3 \
+            || az containerapp update \
+              --name flame-intro-backend \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --image ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro-backend:${{ steps.readtag.outputs.TAG }}
+          
+          # Get backend URL
+          BACKEND_FQDN=$(az containerapp show \
+            --name flame-intro-backend \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            --output tsv)
+          
+          BACKEND_URL="https://$BACKEND_FQDN"
+          echo "BACKEND_URL=$BACKEND_URL" >> $GITHUB_OUTPUT
+          echo "✅ Backend deployed at: $BACKEND_URL"
+
+      # Step 2: Run database migrations
+      - name: Run database migrations
+        run: |
+          echo "🗄️ Running database migrations..."
+          until pg_isready -h ${{ secrets.AZURE_DB_HOST }} -p 5432 -U ${{ secrets.POSTGRES_USER }}; do
+            echo "Waiting for database..."
+            sleep 5
+          done
+          
+          PGPASSWORD=${{ secrets.POSTGRES_PASSWORD }} psql \
+            -h ${{ secrets.AZURE_DB_HOST }} \
+            -p 5432 \
+            -U ${{ secrets.POSTGRES_USER }} \
+            -d ${{ secrets.POSTGRES_DB }} \
+            -f backend/database/schema.sql \
+            || echo "Schema already exists or migration completed"
+
+      # Step 3: Build frontend with correct API URL
+      - name: Build and push frontend with backend URL
+        run: |
+          echo "🎨 Building frontend with API URL: ${{ steps.deploy-backend.outputs.BACKEND_URL }}"
+          
+          # Build frontend with correct API URL
+          docker build \
+            --build-arg API_URL=${{ steps.deploy-backend.outputs.BACKEND_URL }} \
+            -t ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro:${{ steps.readtag.outputs.TAG }}-with-api \
+            ./flame_intro
+          
+          # Push the updated image
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro:${{ steps.readtag.outputs.TAG }}-with-api
+
+      # Step 4: Deploy frontend
+      - name: Deploy Frontend Container App
+        id: deploy-frontend
+        run: |
+          echo "🎮 Deploying frontend container app..."
+          
+          # Get environment ID
+          ENVIRONMENT_ID=$(az containerapp env show \
+            --name flame-intro-env \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query id \
+            --output tsv)
+          
+          # Deploy or update frontend
+          az containerapp create \
+            --name flame-intro-frontend \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --environment "$ENVIRONMENT_ID" \
+            --image ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro:${{ steps.readtag.outputs.TAG }}-with-api \
+            --target-port 80 \
+            --ingress external \
+            --registry-server index.docker.io \
+            --registry-username ${{ secrets.DOCKERHUB_USERNAME }} \
+            --registry-password ${{ secrets.DOCKERHUB_TOKEN }} \
+            --cpu 0.25 \
+            --memory 0.5Gi \
+            --min-replicas 1 \
+            --max-replicas 5 \
+            || az containerapp update \
+              --name flame-intro-frontend \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --image ${{ secrets.DOCKERHUB_USERNAME }}/flame-intro:${{ steps.readtag.outputs.TAG }}-with-api
+          
+          # Get frontend URL
+          FRONTEND_FQDN=$(az containerapp show \
+            --name flame-intro-frontend \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            --output tsv)
+          
+          FRONTEND_URL="https://$FRONTEND_FQDN"
+          echo "FRONTEND_URL=$FRONTEND_URL" >> $GITHUB_OUTPUT
+          echo "✅ Frontend deployed at: $FRONTEND_URL"
+
+      # Step 5: Update backend CORS with frontend URL
+      - name: Update backend CORS configuration
+        run: |
+          echo "🔗 Updating backend CORS configuration..."
+          az containerapp update \
+            --name flame-intro-backend \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --set-env-vars CORS_ORIGIN=${{ steps.deploy-frontend.outputs.FRONTEND_URL }}
+
+      # Step 6: Health checks and validation
+      - name: Comprehensive health checks
+        run: |
+          echo "🔍 Running comprehensive health checks..."
+          sleep 60
+          
+          # Check backend health
+          echo "Checking backend health..."
+          for i in {1..5}; do
+            if curl -f ${{ steps.deploy-backend.outputs.BACKEND_URL }}/api/health; then
+              echo "✅ Backend health check passed"
+              break
+            else
+              echo "⏳ Backend health check attempt $i/5 failed, retrying..."
+              sleep 10
+            fi
+            if [ $i -eq 5 ]; then
+              echo "❌ Backend health check failed after 5 attempts"
+              exit 1
+            fi
+          done
+          
+          # Check frontend
+          echo "Checking frontend..."
+          for i in {1..5}; do
+            if curl -f ${{ steps.deploy-frontend.outputs.FRONTEND_URL }}; then
+              echo "✅ Frontend health check passed"
+              break
+            else
+              echo "⏳ Frontend health check attempt $i/5 failed, retrying..."
+              sleep 10
+            fi
+            if [ $i -eq 5 ]; then
+              echo "❌ Frontend health check failed after 5 attempts"
+              exit 1
+            fi
+          done
+          
+          # Test API connectivity from a separate request
+          echo "Testing API connectivity..."
+          API_RESPONSE=$(curl -s ${{ steps.deploy-backend.outputs.BACKEND_URL }}/api/leaderboard)
+          if echo "$API_RESPONSE" | jq -e '.leaderboard' > /dev/null; then
+            echo "✅ API connectivity test passed"
+          else
+            echo "❌ API connectivity test failed"
+            echo "Response: $API_RESPONSE"
+            exit 1
+          fi
+
+      # Step 7: Output final URLs
+      - name: Deployment Summary
+        run: |
+          echo "🎉 Deployment completed successfully!"
+          echo "Frontend URL: ${{ steps.deploy-frontend.outputs.FRONTEND_URL }}"
+          echo "Backend URL: ${{ steps.deploy-backend.outputs.BACKEND_URL }}"
+          echo ""
+          echo "🔗 Test the application:"
+          echo "Game: ${{ steps.deploy-frontend.outputs.FRONTEND_URL }}"
+          echo "API Health: ${{ steps.deploy-backend.outputs.BACKEND_URL }}/api/health"
+          echo "Leaderboard: ${{ steps.deploy-backend.outputs.BACKEND_URL }}/api/leaderboard" 
