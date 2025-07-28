@@ -10,6 +10,7 @@ export const createPlayer = async (req, res, next) => {
       return res.status(200).json({
         id: existingPlayer.id,
         name: existingPlayer.name,
+        created_at: existingPlayer.created_at,
         message: 'Player already exists'
       });
     }
@@ -19,7 +20,8 @@ export const createPlayer = async (req, res, next) => {
     
     res.status(201).json({
       id: newPlayer.id,
-      name: newPlayer.name
+      name: newPlayer.name,
+      created_at: newPlayer.created_at
     });
   } catch (error) {
     next(error);

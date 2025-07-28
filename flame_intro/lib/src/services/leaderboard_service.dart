@@ -19,7 +19,9 @@ class Player {
     return Player(
       id: json['id'],
       name: json['name'],
-      createdAt: DateTime.parse(json['created_at']),
+      createdAt: json['created_at'] != null 
+          ? DateTime.parse(json['created_at']) 
+          : DateTime.now(),
     );
   }
 }
