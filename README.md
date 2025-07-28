@@ -39,12 +39,13 @@ This project demonstrates a complete **full-stack application** with production-
 
 **File**: `.github/workflows/ci.yml`
 
-Our CI pipeline implements **automated quality gates** and **parallel processing**:
+Our CI pipeline implements **automated quality gates**, **security scanning**, and **parallel processing**:
 
 ```yaml
 jobs:
   test:           # Frontend testing & build
-  test_backend:   # Backend testing & validation  
+  test_backend:   # Backend testing & validation
+  security_scan:  # Container image vulnerability scanning
   build_images:   # Docker image creation & push
 ```
 
@@ -55,17 +56,25 @@ jobs:
    - Executes automated tests for both frontend and backend
    - Ensures code meets quality standards before deployment
 
-2. **Parallel Processing** 
-   - Frontend and backend tests run simultaneously
-   - Reduces total pipeline execution time
-   - Fails fast if any component has issues
+2. **Security Vulnerability Scanning**
+   - Scans Docker images with **Trivy** before pushing to registry
+   - Gates on **HIGH/CRITICAL** CVEs with exit code 1
+   - Ignores unfixed vulnerabilities to prevent base-image issues from breaking pipeline
+   - Uploads **SARIF reports** to GitHub Security tab for vulnerability tracking
+   - Uses pinned Trivy action version (@0.20.0) with built-in caching
 
-3. **Artifact Management**
+3. **Parallel Processing** 
+   - Frontend and backend tests run simultaneously
+   - Security scanning runs after successful tests
+   - Reduces total pipeline execution time
+   - Fails fast if any component has issues or security vulnerabilities
+
+4. **Artifact Management**
    - Builds Docker images with unique SHA tags
-   - Pushes images to Docker Hub registry
+   - Only pushes images to Docker Hub after passing security scans
    - Creates deployment artifacts for CD pipeline
 
-4. **GitHub Pages Deployment**
+5. **GitHub Pages Deployment**
    - Automatically deploys Flutter web build to GitHub Pages
    - Provides immediate preview environment
    - Uses optimized build with proper base href configuration
@@ -80,14 +89,16 @@ Our CD pipeline implements **Blue-Green deployment** strategy with **zero-downti
 
 ```mermaid
 graph LR
-    A[CI Success] --> B[Azure Login]
-    B --> C[Infrastructure Check]
-    C --> D[Backend Deployment]
-    D --> E[Database Migration]
-    E --> F[Frontend Build & Deploy]
-    F --> G[CORS Configuration]
-    G --> H[Health Checks]
-    H --> I[Deployment Complete]
+    A[Code Tests] --> B[Security Scan]
+    B --> C[Image Build & Push]
+    C --> D[Azure Login]
+    D --> E[Infrastructure Check]
+    E --> F[Backend Deployment]
+    F --> G[Database Migration]
+    G --> H[Frontend Build & Deploy]
+    H --> I[CORS Configuration]
+    I --> J[Health Checks]
+    J --> K[Deployment Complete]
 ```
 
 #### **Stage-by-Stage Breakdown:**
@@ -306,6 +317,15 @@ Frontend:
 - **Non-root users** in containers
 - **Resource limits** prevent resource exhaustion
 - **Registry security** with private Docker Hub
+- **Vulnerability scanning** with Trivy before image deployment
+
+### **Security Scanning with Trivy**:
+- **Pre-deployment scanning** of all container images
+- **CVE gating** on HIGH and CRITICAL vulnerabilities
+- **SARIF reporting** integrated with GitHub Security tab
+- **Unfixed vulnerability tolerance** to prevent base-image blockages
+- **Pinned action versions** for reproducible security checks
+- **Automated vulnerability database updates** with caching
 
 ## 📊 Monitoring & Observability
 
@@ -413,14 +433,15 @@ cd flame_intro && flutter run -d chrome     # Start game
 
 1. **Infrastructure as Code**: All infrastructure version-controlled
 2. **Automated Testing**: Quality gates in every deployment
-3. **Container Security**: Minimal base images, secret management
-4. **Monitoring**: Comprehensive logging and health checks
-5. **Scalability**: Auto-scaling based on demand
-6. **Disaster Recovery**: Automated backups and rollback procedures
-7. **Cost Optimization**: Resource-efficient container sizing
-8. **Security**: CORS, HTTPS, secret management
-9. **Documentation**: Clear, maintainable codebase
-10. **Collaboration**: Git workflow with automated reviews
+3. **Security Scanning**: Trivy vulnerability scanning with SARIF reporting
+4. **Container Security**: Minimal base images, secret management, CVE gating
+5. **Monitoring**: Comprehensive logging and health checks
+6. **Scalability**: Auto-scaling based on demand
+7. **Disaster Recovery**: Automated backups and rollback procedures
+8. **Cost Optimization**: Resource-efficient container sizing
+9. **Security**: CORS, HTTPS, secret management, vulnerability management
+10. **Documentation**: Clear, maintainable codebase
+11. **Collaboration**: Git workflow with automated reviews
 
 ## 🌟 Why This DevOps Implementation Matters
 
