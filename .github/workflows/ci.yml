@@ -82,6 +82,8 @@ jobs:
       # Scan backend image with Trivy
       - name: Run Trivy vulnerability scanner - Backend
         uses: aquasecurity/trivy-action@0.20.0
+        id: trivy-backend
+        continue-on-error: true
         with:
           image-ref: backend-scan:${{ steps.meta.outputs.sha }}
           format: 'sarif'
@@ -93,6 +95,8 @@ jobs:
       # Scan frontend image with Trivy
       - name: Run Trivy vulnerability scanner - Frontend
         uses: aquasecurity/trivy-action@0.20.0
+        id: trivy-frontend
+        continue-on-error: true
         with:
           image-ref: frontend-scan:${{ steps.meta.outputs.sha }}
           format: 'sarif'
@@ -104,17 +108,30 @@ jobs:
       # Upload Trivy scan results to GitHub Security tab
       - name: Upload Trivy scan results - Backend
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('backend-trivy-results.sarif') != ''
         with:
           sarif_file: 'backend-trivy-results.sarif'
           category: 'backend-security'
       
       - name: Upload Trivy scan results - Frontend
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('frontend-trivy-results.sarif') != ''
         with:
           sarif_file: 'frontend-trivy-results.sarif'
           category: 'frontend-security'
+      
+      # Fail the job if HIGH/CRITICAL vulnerabilities were found
+      - name: Check security scan results
+        if: always()
+        run: |
+          if [[ "${{ steps.trivy-backend.outcome }}" == "failure" || "${{ steps.trivy-frontend.outcome }}" == "failure" ]]; then
+            echo "❌ HIGH or CRITICAL vulnerabilities found in container images!"
+            echo "📋 Check the Security tab for detailed SARIF reports"
+            echo "🔧 Please address the vulnerabilities before deployment"
+            exit 1
+          else
+            echo "✅ No HIGH or CRITICAL vulnerabilities found"
+          fi
 
   build_images:
     needs: [security_scan]
