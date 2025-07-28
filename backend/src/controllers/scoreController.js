@@ -16,8 +16,9 @@ export const submitScore = async (req, res, next) => {
     
     res.status(201).json({
       id: scoreEntry.id,
-      playerId: scoreEntry.player_id,
+      player_id: scoreEntry.player_id,
       score: scoreEntry.score,
+      created_at: scoreEntry.created_at,
       rank: scoreEntry.rank
     });
   } catch (error) {

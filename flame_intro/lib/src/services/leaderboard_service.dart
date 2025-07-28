@@ -46,7 +46,9 @@ class ScoreSubmission {
       id: json['id'],
       playerId: json['player_id'],
       score: json['score'],
-      createdAt: DateTime.parse(json['created_at']),
+      createdAt: json['created_at'] != null 
+          ? DateTime.parse(json['created_at']) 
+          : DateTime.now(),
       rank: json['rank'],
     );
   }
@@ -69,7 +71,9 @@ class LeaderboardEntry {
     return LeaderboardEntry(
       playerName: json['player_name'],
       score: json['score'],
-      createdAt: DateTime.parse(json['created_at']),
+      createdAt: json['created_at'] != null 
+          ? DateTime.parse(json['created_at']) 
+          : DateTime.now(),
       rank: json['rank'],
     );
   }

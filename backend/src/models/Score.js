@@ -31,7 +31,7 @@ class Score {
       SELECT 
         s.id,
         s.score,
-        s.created_at as date,
+        s.created_at,
         p.name as player_name,
         ROW_NUMBER() OVER (ORDER BY s.score DESC) as rank
       FROM scores s
@@ -45,9 +45,9 @@ class Score {
       const result = await pool.query(query, values);
       return result.rows.map(row => ({
         rank: parseInt(row.rank),
-        playerName: row.player_name,
+        player_name: row.player_name,
         score: row.score,
-        date: row.date
+        created_at: row.created_at
       }));
     } catch (error) {
       throw error;
