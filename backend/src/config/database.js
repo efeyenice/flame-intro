@@ -7,7 +7,9 @@ const { Pool } = pg;
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://user:pass@localhost:5432/gamedb',
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  ssl: process.env.DATABASE_URL?.includes('postgres.database.azure.com') 
+    ? { rejectUnauthorized: false } 
+    : false,
 });
 
 // Test database connection
