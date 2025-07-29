@@ -5,7 +5,7 @@ Backend API for the Flame Intro Brick Breaker game, providing player management 
 ## Setup
 
 ### Prerequisites
-- Node.js 18+ 
+- Node.js 22+ (upgraded for security fixes including CVE-2024-21538)
 - PostgreSQL 13+
 - npm or yarn
 
