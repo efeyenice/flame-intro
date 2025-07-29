@@ -1,5 +1,5 @@
-# Use the latest LTS Node.js base image with security fixes
-FROM node:22-alpine
+# Use the latest Node.js alpine image with security fixes (including brace-expansion 2.0.2+)
+FROM node:alpine
 
 # Set the working directory inside the container
 WORKDIR /app
